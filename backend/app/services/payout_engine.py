@@ -1,5 +1,7 @@
 import os
-from datetime import date
+import asyncio
+import calendar
+from datetime import date, timedelta
 from app.services.database import fetch_all, fetch_one, fetch_val
 
 CHARGEBACK_DAYS = int(os.getenv("CHARGEBACK_DAYS", 120))
@@ -51,17 +53,13 @@ async def calc_rep_payout(rep_code: str, period: str) -> dict:
     mult = await get_store_multiplier(store_code)
     chargeback_days = int(await get_system_config("chargeback_days", "120"))
 
-    rp_acts = await fetch_all(
-        """select * from rateplan_transactions
-           where rep_code=$1 and period=$2 and type='Activation'
-           order by transaction_date""",
-        rep_code, period
-    )
-    rp_deacts = await fetch_all(
-        """select * from rateplan_transactions
-           where rep_code=$1 and period=$2 and type='Deactivation'
-           order by transaction_date""",
-        rep_code, period
+    rp_acts, rp_deacts, ft_acts, ac_sales, dv_sales, cc_txns_raw = await asyncio.gather(
+        fetch_all("select * from rateplan_transactions where rep_code=$1 and period=$2 and type='Activation' order by transaction_date", rep_code, period),
+        fetch_all("select * from rateplan_transactions where rep_code=$1 and period=$2 and type='Deactivation' order by transaction_date", rep_code, period),
+        fetch_all("select * from feature_transactions where rep_code=$1 and period=$2 and type='Activation' order by transaction_date", rep_code, period),
+        fetch_all("select * from accessory_transactions where rep_code=$1 and period=$2 and type='Sale' order by transaction_date", rep_code, period),
+        fetch_all("select * from device_transactions where rep_code=$1 and period=$2 and type='Sale' order by transaction_date", rep_code, period),
+        fetch_all("select * from creditcard_transactions where rep_code=$1 and period=$2 order by transaction_date", rep_code, period),
     )
 
     rp_txns = []
@@ -107,12 +105,6 @@ async def calc_rep_payout(rep_code: str, period: str) -> dict:
                     "earned": -clawback,
                 })
 
-    ft_acts = await fetch_all(
-        """select * from feature_transactions
-           where rep_code=$1 and period=$2 and type='Activation'
-           order by transaction_date""",
-        rep_code, period
-    )
     ft_txns = []
     ft_earned = 0.0
     for t in ft_acts:
@@ -124,6 +116,7 @@ async def calc_rep_payout(rep_code: str, period: str) -> dict:
             "code": t["feature_code"],
             "description": t.get("feature_description", ""),
             "subscriber_id": t.get("subscriber_id", ""),
+            "phone_number": t.get("phone_number", ""),
             "mrc": float(t.get("feature_mrc") or 0),
             "type": "Activation",
             "base_rate": base_rate,
@@ -131,12 +124,6 @@ async def calc_rep_payout(rep_code: str, period: str) -> dict:
             "earned": earned,
         })
 
-    ac_sales = await fetch_all(
-        """select * from accessory_transactions
-           where rep_code=$1 and period=$2 and type='Sale'
-           order by transaction_date""",
-        rep_code, period
-    )
     ac_txns = []
     ac_earned = 0.0
     for t in ac_sales:
@@ -147,6 +134,8 @@ async def calc_rep_payout(rep_code: str, period: str) -> dict:
             "date": str(t["transaction_date"]),
             "code": t["accessory_code"],
             "description": t.get("accessory_description", ""),
+            "subscriber_id": t.get("subscriber_id", ""),
+            "phone_number": t.get("phone_number", ""),
             "customer_paid": float(t.get("customer_paid_amount") or 0),
             "type": "Sale",
             "base_rate": base_rate,
@@ -154,12 +143,6 @@ async def calc_rep_payout(rep_code: str, period: str) -> dict:
             "earned": earned,
         })
 
-    dv_sales = await fetch_all(
-        """select * from device_transactions
-           where rep_code=$1 and period=$2 and type='Sale'
-           order by transaction_date""",
-        rep_code, period
-    )
     dv_txns = []
     dv_earned = 0.0
     for t in dv_sales:
@@ -171,6 +154,8 @@ async def calc_rep_payout(rep_code: str, period: str) -> dict:
             "code": t["device_code"],
             "description": t.get("device_description", ""),
             "sale_type": t.get("device_sale_type", ""),
+            "subscriber_id": t.get("subscriber_id", ""),
+            "phone_number": t.get("phone_number", ""),
             "customer_paid": float(t.get("customer_paid_amount") or 0),
             "type": "Sale",
             "base_rate": base_rate,
@@ -178,12 +163,6 @@ async def calc_rep_payout(rep_code: str, period: str) -> dict:
             "earned": earned,
         })
 
-    cc_txns_raw = await fetch_all(
-        """select * from creditcard_transactions
-           where rep_code=$1 and period=$2
-           order by transaction_date""",
-        rep_code, period
-    )
     cc_txns = []
     cc_earned = 0.0
     cc_rate = await get_comp_rate("creditcard", "CC-SW", period)
@@ -199,13 +178,9 @@ async def calc_rep_payout(rep_code: str, period: str) -> dict:
 
     total = round(rp_earned + ft_earned + ac_earned + dv_earned + cc_earned, 2)
 
-    year, month = map(int, period.split("-"))
-    from datetime import date
-    import calendar
-    last_day = calendar.monthrange(year, month)[1]
-    month_end = date(year, month, last_day)
+    last_day = calendar.monthrange(*map(int, period.split("-")))[1]
+    month_end = date(*map(int, period.split("-")), last_day)
     pay_days = int(await get_system_config("payment_days_after_close", "10"))
-    from datetime import timedelta
     payment_date = str(month_end + timedelta(days=pay_days))
 
     return {
@@ -235,48 +210,29 @@ async def calc_rep_payout(rep_code: str, period: str) -> dict:
 
 
 async def calc_store_stats(store_code: str, period: str) -> dict:
-    rp_acts = await fetch_val(
-        "select count(*) from rateplan_transactions where store_code=$1 and period=$2 and type='Activation'",
-        store_code, period
-    ) or 0
-    rp_deacts = await fetch_val(
-        "select count(*) from rateplan_transactions where store_code=$1 and period=$2 and type='Deactivation'",
-        store_code, period
-    ) or 0
-    rp_net = int(rp_acts) - int(rp_deacts)
+    rp_acts, rp_deacts, rp_rev, ft_rev, ac_rev, dv_rev, quota = await asyncio.gather(
+        fetch_val("select count(*) from rateplan_transactions where store_code=$1 and period=$2 and type='Activation'", store_code, period),
+        fetch_val("select count(*) from rateplan_transactions where store_code=$1 and period=$2 and type='Deactivation'", store_code, period),
+        fetch_val("select coalesce(sum(customer_paid_amount),0) from rateplan_transactions where store_code=$1 and period=$2 and type='Activation'", store_code, period),
+        fetch_val("select coalesce(sum(feature_mrc),0) from feature_transactions where store_code=$1 and period=$2 and type='Activation'", store_code, period),
+        fetch_val("select coalesce(sum(customer_paid_amount),0) from accessory_transactions where store_code=$1 and period=$2 and type='Sale'", store_code, period),
+        fetch_val("select coalesce(sum(customer_paid_amount),0) from device_transactions where store_code=$1 and period=$2 and type='Sale'", store_code, period),
+        fetch_one("select * from store_quotas where store_code=$1 and period=$2", store_code, period),
+    )
 
-    rp_rev = await fetch_val(
-        "select coalesce(sum(customer_paid_amount),0) from rateplan_transactions where store_code=$1 and period=$2 and type='Activation'",
-        store_code, period
-    ) or 0
-    ft_rev = await fetch_val(
-        "select coalesce(sum(feature_mrc),0) from feature_transactions where store_code=$1 and period=$2 and type='Activation'",
-        store_code, period
-    ) or 0
-    ac_rev = await fetch_val(
-        "select coalesce(sum(customer_paid_amount),0) from accessory_transactions where store_code=$1 and period=$2 and type='Sale'",
-        store_code, period
-    ) or 0
-    dv_rev = await fetch_val(
-        "select coalesce(sum(customer_paid_amount),0) from device_transactions where store_code=$1 and period=$2 and type='Sale'",
-        store_code, period
-    ) or 0
-
-    quota = await fetch_one(
-        "select * from store_quotas where store_code=$1 and period=$2",
-        store_code, period
-    ) or {}
+    rp_net = int(rp_acts or 0) - int(rp_deacts or 0)
+    quota = quota or {}
 
     def att(actual, quota_val):
         q = float(quota_val) if quota_val else 1
         return round(min(1.5, actual / q), 4) if q > 0 else 0
 
     atts = {
-        "rp_volume":         att(rp_net,     quota.get("rp_volume_quota", 100)),
-        "rp_revenue":        att(float(rp_rev),  quota.get("rp_revenue_quota", 7000)),
-        "feature_revenue":   att(float(ft_rev),  quota.get("feature_revenue_quota", 5000)),
-        "accessory_revenue": att(float(ac_rev),  quota.get("accessory_revenue_quota", 3000)),
-        "device_revenue":    att(float(dv_rev),  quota.get("device_revenue_quota", 15000)),
+        "rp_volume":         att(rp_net,        quota.get("rp_volume_quota", 100)),
+        "rp_revenue":        att(float(rp_rev or 0),  quota.get("rp_revenue_quota", 7000)),
+        "feature_revenue":   att(float(ft_rev or 0),  quota.get("feature_revenue_quota", 5000)),
+        "accessory_revenue": att(float(ac_rev or 0),  quota.get("accessory_revenue_quota", 3000)),
+        "device_revenue":    att(float(dv_rev or 0),  quota.get("device_revenue_quota", 15000)),
     }
     overall = round(min(MANAGER_CAP, sum(atts.values()) / len(atts)), 4)
 
@@ -285,10 +241,10 @@ async def calc_store_stats(store_code: str, period: str) -> dict:
         "period": period,
         "actuals": {
             "rp_net_adds": rp_net,
-            "rp_revenue": round(float(rp_rev), 2),
-            "feature_revenue": round(float(ft_rev), 2),
-            "accessory_revenue": round(float(ac_rev), 2),
-            "device_revenue": round(float(dv_rev), 2),
+            "rp_revenue": round(float(rp_rev or 0), 2),
+            "feature_revenue": round(float(ft_rev or 0), 2),
+            "accessory_revenue": round(float(ac_rev or 0), 2),
+            "device_revenue": round(float(dv_rev or 0), 2),
         },
         "quotas": {
             "rp_volume":         float(quota.get("rp_volume_quota", 0)),
@@ -311,12 +267,21 @@ async def calc_manager_payout(manager_code: str, period: str) -> dict:
 
     store_code = mgr["store_code"]
     tti = float(mgr["tti"])
-    stats = await calc_store_stats(store_code, period)
-    att = stats["overall_attainment"]
 
-    floor = float(await get_system_config("manager_payout_floor", "0.50"))
-    cap = float(await get_system_config("manager_payout_cap", "1.30"))
-    cc_mgr_rate = float(await get_system_config("cc_manager_rate", "10.00"))
+    stats, floor_cfg, cap_cfg, cc_rate_cfg, pay_days_cfg, cc_count = await asyncio.gather(
+        calc_store_stats(store_code, period),
+        get_system_config("manager_payout_floor", "0.50"),
+        get_system_config("manager_payout_cap", "1.30"),
+        get_system_config("cc_manager_rate", "10.00"),
+        get_system_config("payment_days_after_close", "10"),
+        fetch_val("select count(*) from creditcard_transactions where store_code=$1 and period=$2", store_code, period),
+    )
+
+    att = stats["overall_attainment"]
+    floor = float(floor_cfg)
+    cap = float(cap_cfg)
+    cc_mgr_rate = float(cc_rate_cfg)
+    pay_days = int(pay_days_cfg)
 
     if att < floor:
         base_payout = 0.0
@@ -325,19 +290,11 @@ async def calc_manager_payout(manager_code: str, period: str) -> dict:
         effective_att = min(cap, att)
         base_payout = round(tti * effective_att, 2)
 
-    cc_count = await fetch_val(
-        "select count(*) from creditcard_transactions where store_code=$1 and period=$2",
-        store_code, period
-    ) or 0
-    cc_payout = round(int(cc_count) * cc_mgr_rate, 2)
+    cc_payout = round(int(cc_count or 0) * cc_mgr_rate, 2)
     total_payout = round(base_payout + cc_payout, 2)
 
-    year, month = map(int, period.split("-"))
-    import calendar
-    from datetime import timedelta
-    last_day = calendar.monthrange(year, month)[1]
-    month_end = date(year, month, last_day)
-    pay_days = int(await get_system_config("payment_days_after_close", "10"))
+    last_day = calendar.monthrange(*map(int, period.split("-")))[1]
+    month_end = date(*map(int, period.split("-")), last_day)
     payment_date = str(month_end + timedelta(days=pay_days))
 
     return {
@@ -350,7 +307,7 @@ async def calc_manager_payout(manager_code: str, period: str) -> dict:
         "store_attainment": att,
         "effective_attainment": effective_att,
         "base_payout": base_payout,
-        "cc_count": int(cc_count),
+        "cc_count": int(cc_count or 0),
         "cc_payout": cc_payout,
         "total_payout": total_payout,
         "payment_date": payment_date,
@@ -359,41 +316,48 @@ async def calc_manager_payout(manager_code: str, period: str) -> dict:
     }
 
 
-async def calc_district_summary(dm_code: str, period: str) -> dict:
-    stores = await fetch_all(
-        "select * from stores where district_code=$1", dm_code
+async def calc_rm_payout(rm_code: str, period: str) -> dict:
+    rm = await fetch_one(
+        "select * from region_managers where rm_code = $1", rm_code
     )
-    cc_dm_rate = float(await get_system_config("cc_dm_rate", "10.00"))
+    if not rm:
+        return {}
 
-    store_summaries = []
-    total_cc = 0.0
+    tti = float(rm["tti"])
+    floor = float(rm["payout_floor"])
+    cap = float(rm["payout_cap"])
 
-    for store in stores:
+    stores, cc_dm_rate_cfg, pay_days_cfg = await asyncio.gather(
+        fetch_all("select * from stores where rm_code = $1", rm_code),
+        get_system_config("cc_dm_rate", "10.00"),
+        get_system_config("payment_days_after_close", "10"),
+    )
+
+    cc_dm_rate = float(cc_dm_rate_cfg)
+    pay_days = int(pay_days_cfg)
+
+    async def calc_store_summary(store):
         mgr = await fetch_one(
-            "select * from managers where store_code=$1", store["store_code"]
+            "select * from managers where store_code = $1", store["store_code"]
         )
         if not mgr:
-            continue
-        stats = await calc_store_stats(store["store_code"], period)
-        mgr_payout = await calc_manager_payout(mgr["manager_code"], period)
+            return None
 
-        cc_count = await fetch_val(
-            "select count(*) from creditcard_transactions where store_code=$1 and period=$2",
-            store["store_code"], period
-        ) or 0
-        dm_cc = round(int(cc_count) * cc_dm_rate, 2)
-        total_cc += dm_cc
-
-        reps = await fetch_all(
-            "select rep_code from reps where store_code=$1 and status='Active'",
-            store["store_code"]
+        stats, mgr_payout, cc_count, reps = await asyncio.gather(
+            calc_store_stats(store["store_code"], period),
+            calc_manager_payout(mgr["manager_code"], period),
+            fetch_val("select count(*) from creditcard_transactions where store_code=$1 and period=$2", store["store_code"], period),
+            fetch_all("select rep_code from reps where store_code=$1 and status='Active'", store["store_code"]),
         )
-        rep_pool = 0.0
-        for r in reps:
-            rp = await calc_rep_payout(r["rep_code"], period)
-            rep_pool += rp.get("summary", {}).get("total", 0)
 
-        store_summaries.append({
+        dm_cc = round(int(cc_count or 0) * cc_dm_rate, 2)
+
+        rep_payouts = await asyncio.gather(*[
+            calc_rep_payout(r["rep_code"], period) for r in reps
+        ])
+        rep_pool = round(sum(rp.get("summary", {}).get("total", 0) for rp in rep_payouts), 2)
+
+        return {
             "store_code": store["store_code"],
             "store_name": store["store_name"],
             "manager_code": mgr["manager_code"],
@@ -404,29 +368,53 @@ async def calc_district_summary(dm_code: str, period: str) -> dict:
             "quotas": stats["quotas"],
             "attainments": stats["attainments"],
             "manager_payout": mgr_payout.get("total_payout", 0),
-            "rep_pool": round(rep_pool, 2),
+            "rep_pool": rep_pool,
             "dm_cc_payout": dm_cc,
             "rep_count": len(reps),
-        })
+            "cc_count": int(cc_count or 0),
+        }
 
-    avg_att = round(
-        sum(s["overall_attainment"] for s in store_summaries) / len(store_summaries), 4
-    ) if store_summaries else 0
+    store_summaries_raw = await asyncio.gather(*[
+        calc_store_summary(store) for store in stores
+    ])
+    store_summaries = [s for s in store_summaries_raw if s is not None]
 
-    year, month = map(int, period.split("-"))
-    import calendar
-    from datetime import timedelta
-    last_day = calendar.monthrange(year, month)[1]
-    month_end = date(year, month, last_day)
-    pay_days = int(await get_system_config("payment_days_after_close", "10"))
+    total_cc = sum(s["dm_cc_payout"] for s in store_summaries)
+    all_attainments = [s["overall_attainment"] for s in store_summaries]
+    avg_att = round(sum(all_attainments) / len(all_attainments), 4) if all_attainments else 0
+
+    if avg_att < floor:
+        base_payout = 0.0
+        effective_att = 0.0
+    else:
+        effective_att = min(cap, avg_att)
+        base_payout = round(tti * effective_att, 2)
+
+    total_payout = round(base_payout + total_cc, 2)
+
+    last_day = calendar.monthrange(*map(int, period.split("-")))[1]
+    month_end = date(*map(int, period.split("-")), last_day)
     payment_date = str(month_end + timedelta(days=pay_days))
 
     return {
-        "dm_code": dm_code,
+        "rm_code": rm_code,
+        "rm_name": rm["rm_name"],
+        "region_name": rm["region_name"],
         "period": period,
-        "payment_date": payment_date,
-        "dm_cc_payout": round(total_cc, 2),
+        "tti": tti,
         "average_attainment": avg_att,
+        "effective_attainment": effective_att,
+        "base_payout": base_payout,
+        "cc_count": int(total_cc / cc_dm_rate) if cc_dm_rate else 0,
+        "cc_payout": round(total_cc, 2),
+        "total_payout": total_payout,
+        "payment_date": payment_date,
+        "payout_rules": {"floor": floor, "cap": cap, "cc_rate": cc_dm_rate},
         "store_count": len(store_summaries),
+        "average_store_attainment": avg_att,
         "stores": store_summaries,
     }
+
+
+async def calc_district_summary(dm_code: str, period: str) -> dict:
+    return await calc_rm_payout("RM-001", period)
