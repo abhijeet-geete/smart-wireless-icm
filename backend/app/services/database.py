@@ -15,8 +15,10 @@ async def get_pool():
         ssl_context = ssl.create_default_context()
         ssl_context.check_hostname = False
         ssl_context.verify_mode = ssl.CERT_NONE
+        # Remove sslmode from URL if present
+        url = DATABASE_URL.replace('?sslmode=require', '').replace('&sslmode=require', '')
         _pool = await asyncpg.create_pool(
-            DATABASE_URL,
+            url,
             min_size=2,
             max_size=10,
             statement_cache_size=0,
