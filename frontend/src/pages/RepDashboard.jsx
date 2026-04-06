@@ -74,7 +74,8 @@ export default function RepDashboard({ overrideRepCode } = {}) {
         <div style={styles.topRight}>
           <span style={styles.period}>Jan 2025</span>
           <span style={styles.storeName}>{store_name}</span>
-          <button style={styles.logoutBtn} onClick={logout}>Sign out</button>
+          <button style={{...styles.logoutBtn, marginRight: 8}} onClick={() => window.location.href = '/about'}>About</button>
+            <button style={styles.logoutBtn} onClick={logout}>Sign out</button>
         </div>
       </div>
 

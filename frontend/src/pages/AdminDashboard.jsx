@@ -238,6 +238,7 @@ export default function AdminDashboard() {
             disabled={calcRunning}>
             {calcRunning ? 'Running...' : 'Run calculations'}
           </button>
+          <button style={{...styles.logoutBtn, marginRight: 8}} onClick={() => window.location.href = '/about'}>About</button>
           <button style={styles.logoutBtn} onClick={logout}>Sign out</button>
         </div>
       </div>

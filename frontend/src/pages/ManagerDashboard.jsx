@@ -153,6 +153,7 @@ export default function ManagerDashboard({ overrideMgrCode } = {}) {
           <div style={styles.topRight}>
             <span style={styles.period}>Jan 2025</span>
             <button style={styles.backBtn} onClick={() => { setDrillRep(null); setDrillData(null); setActiveTab('reps') }}>← Back to rep leaderboard</button>
+            <button style={{...styles.logoutBtn, marginRight: 8}} onClick={() => window.location.href = '/about'}>About</button>
             <button style={styles.logoutBtn} onClick={logout}>Sign out</button>
           </div>
         </div>
@@ -197,6 +198,7 @@ export default function ManagerDashboard({ overrideMgrCode } = {}) {
           <div style={styles.topRight}>
             <span style={styles.period}>Jan 2025</span>
             <button style={styles.backBtn} onClick={() => { setDrillRep(null); setDrillData(null); setActiveTab('reps') }}>← Back to rep leaderboard</button>
+            <button style={{...styles.logoutBtn, marginRight: 8}} onClick={() => window.location.href = '/about'}>About</button>    
             <button style={styles.logoutBtn} onClick={logout}>Sign out</button>
           </div>
         </div>
@@ -400,7 +402,8 @@ export default function ManagerDashboard({ overrideMgrCode } = {}) {
         <div style={styles.topRight}>
           <span style={styles.period}>Jan 2025</span>
           <span style={styles.storeName}>{store_name}</span>
-          <button style={styles.logoutBtn} onClick={logout}>Sign out</button>
+          <button style={{...styles.logoutBtn, marginRight: 8}} onClick={() => window.location.href = '/about'}>About</button>
+            <button style={styles.logoutBtn} onClick={logout}>Sign out</button>
         </div>
       </div>
 

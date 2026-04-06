@@ -220,6 +220,7 @@ export default function RMDashboard() {
           </div>
           <div style={styles.topRight}>
             <button style={styles.backBtn} onClick={() => setDrillRepData(null)}>← Back to {drillStore.store_name}</button>
+            <button style={{...styles.logoutBtn, marginRight: 8}} onClick={() => window.location.href = '/about'}>About</button>
             <button style={styles.logoutBtn} onClick={logout}>Sign out</button>
           </div>
         </div>
@@ -419,6 +420,7 @@ export default function RMDashboard() {
           </div>
           <div style={styles.topRight}>
             <button style={styles.backBtn} onClick={() => { setDrillStore(null); setDrillData(null); setDrillReps(null) }}>← Back to region</button>
+            <button style={{...styles.logoutBtn, marginRight: 8}} onClick={() => window.location.href = '/about'}>About</button>
             <button style={styles.logoutBtn} onClick={logout}>Sign out</button>
           </div>
         </div>
@@ -547,7 +549,8 @@ export default function RMDashboard() {
         <div style={styles.topRight}>
           <span style={styles.period}>Jan 2025</span>
           <span style={styles.storeName}>{data.region_name || 'Southwest Region'}</span>
-          <button style={styles.logoutBtn} onClick={logout}>Sign out</button>
+          <button style={{...styles.logoutBtn, marginRight: 8}} onClick={() => window.location.href = '/about'}>About</button>
+            <button style={styles.logoutBtn} onClick={logout}>Sign out</button>
         </div>
       </div>
 

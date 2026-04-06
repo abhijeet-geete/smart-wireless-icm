@@ -52,6 +52,11 @@ export default function Login() {
         </div>
         <div style={styles.subtitle}>Incentive Compensation Portal</div>
         <div style={styles.period}>January 2025</div>
+        <div style={{ textAlign: 'center', marginBottom: 16 }}>
+          <button onClick={() => window.location.href = '/about'} style={{ background: 'none', border: 'none', color: '#185FA5', fontSize: 12, cursor: 'pointer', textDecoration: 'underline' }}>
+            About this project →
+          </button>
+        </div>
 
         <form onSubmit={handleLogin} style={styles.form}>
           <div style={styles.field}>
@@ -99,7 +104,7 @@ const styles = {
   brand: { fontSize: 26, fontWeight: 600, marginBottom: 4, textAlign: 'center' },
   brandBlue: { color: '#185FA5' },
   subtitle: { fontSize: 13, color: '#666', textAlign: 'center', marginBottom: 4 },
-  period: { fontSize: 12, color: '#999', textAlign: 'center', marginBottom: 28 },
+  period: { fontSize: 12, color: '#999', textAlign: 'center', marginBottom: 8 },
   form: { display: 'flex', flexDirection: 'column', gap: 16 },
   field: { display: 'flex', flexDirection: 'column', gap: 6 },
   label: { fontSize: 13, fontWeight: 500, color: '#333' },

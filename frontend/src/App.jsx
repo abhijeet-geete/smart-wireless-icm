@@ -5,6 +5,7 @@ import RepDashboard from './pages/RepDashboard'
 import ManagerDashboard from './pages/ManagerDashboard'
 import RMDashboard from './pages/RMDashboard'
 import AdminDashboard from './pages/AdminDashboard'
+import AboutPage from './pages/AboutPage'
 
 function ProtectedRoute({ children, allowedRoles }) {
   const { user, loading } = useAuth()
@@ -49,6 +50,7 @@ function AppRoutes() {
           <AdminDashboard />
         </ProtectedRoute>
       } />
+      <Route path="/about" element={<AboutPage />} />
       <Route path="*" element={<Navigate to={getHome()} />} />
     </Routes>
   )
