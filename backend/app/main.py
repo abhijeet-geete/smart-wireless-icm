@@ -8,11 +8,14 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "https://smart-wireless-icm.vercel.app",
+        "https://smart-wireless-icm-git-main-abhijeet-geetes-projects.vercel.app",
         "http://localhost:5173",
+        "http://localhost:3000",
     ],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
