@@ -11,12 +11,16 @@ _pool = None
 async def get_pool():
     global _pool
     if _pool is None:
+        import ssl
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
         _pool = await asyncpg.create_pool(
             DATABASE_URL,
             min_size=2,
             max_size=10,
             statement_cache_size=0,
-            ssl='require'
+            ssl=ssl_context
         )
     return _pool
 
