@@ -11,19 +11,24 @@ _pool = None
 async def get_pool():
     global _pool
     if _pool is None:
-        import ssl
-        ssl_context = ssl.create_default_context()
-        ssl_context.check_hostname = False
-        ssl_context.verify_mode = ssl.CERT_NONE
-        # Remove sslmode from URL if present
-        url = DATABASE_URL.replace('?sslmode=require', '').replace('&sslmode=require', '')
-        _pool = await asyncpg.create_pool(
-            url,
-            min_size=2,
-            max_size=10,
-            statement_cache_size=0,
-            ssl=ssl_context
-        )
+        try:
+            import ssl
+            ssl_context = ssl.create_default_context()
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = ssl.CERT_NONE
+            url = DATABASE_URL.replace('?sslmode=require', '').replace('&sslmode=require', '')
+            print(f"Connecting to database: {url[:30]}...")
+            _pool = await asyncpg.create_pool(
+                url,
+                min_size=2,
+                max_size=10,
+                statement_cache_size=0,
+                ssl=ssl_context
+            )
+            print("Database pool created successfully!")
+        except Exception as e:
+            print(f"DATABASE CONNECTION ERROR: {e}")
+            raise
     return _pool
 
 
