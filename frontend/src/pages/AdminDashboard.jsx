@@ -32,7 +32,7 @@ function RegionTxnFetcher({ txnKey }) {
     setRows([])
     const fetchAll = async () => {
       try {
-        const res = await fetch(`http://127.0.0.1:8000/api/payout/region/RM-001/transactions`, {
+        const res = await fetch(`/api/payout/region/RM-001/transactions`, {
           headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
         })
         const data = await res.json()

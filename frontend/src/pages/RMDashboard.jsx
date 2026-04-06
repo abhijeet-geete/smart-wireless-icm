@@ -43,7 +43,7 @@ function RegionTransactionTab({ title, note, txnKey, rmCode }) {
     setTxnData(null)
     const fetchTxns = async () => {
       try {
-        const res = await fetch(`http://127.0.0.1:8000/api/payout/region/${rmCode}/transactions`, {
+        const res = await fetch(`/api/payout/region/${rmCode}/transactions`, {
           headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
         })
         const data = await res.json()
